@@ -18,7 +18,8 @@ All layouts use the same two-deck audio engine and preserve the current session 
 - Local audio file loading (no upload); dual independent playback.
 - Browser Web Audio mixing graph, master gain, channel levels and equal-power crossfader.
 - Three-band EQ, filter, channel gain and pitch/tempo control.
-- Waveform drawing from decoded audio.
+- Waveform drawing from decoded audio, tap/click waveform seeking and live playhead position.
+- Live per-deck signal meters driven by Web Audio analyser nodes.
 - Local BPM estimate from an onset-envelope autocorrelation pass.
 - Approximate musical-key estimate from FFT chroma energy.
 - Tempo sync helper (tempo ratio only; not beat-grid phase alignment).
