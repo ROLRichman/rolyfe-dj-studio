@@ -157,8 +157,8 @@ body.led-glow .led-target{box-shadow:0 0 7px color-mix(in srgb,var(--led-color,v
 .radio-float #listenGenres button.active{border-color:var(--green);background:linear-gradient(140deg,#155b4c,#12313a);box-shadow:0 0 12px #55efb044}
 .radio-float .station-list{max-height:250px;overflow:auto;overscroll-behavior:contain}
 .radio-float .station-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:start}
-.radio-float .station-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}
-.radio-float .station-row button{min-width:0;width:100%;padding:8px 5px;font-size:10px;white-space:normal}
+.radio-float .station-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:100%}
+.radio-float .station-row button{min-width:0;width:100%;padding:8px 5px;font-size:10px;white-space:normal}.radio-float .saved-station-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
 .radio-float .atlas-log{height:125px;max-height:125px}
 .radio-float .atlas-controls input{width:0}
 .radio-float .listen-card iframe{width:100%;max-width:100%}
@@ -569,7 +569,27 @@ async function findRadio(tag=radioTag){
   renderRadioRows(radioRows);
  }catch(e){$("stationList").textContent="Could not load stations right now: "+String(e.message||e);}
 }
-async function loadRadioDeck(id,row){const d=decks[id],src=row.url_resolved||row.url;if(!src||!src.startsWith('https://')){alert('This station does not have a secure stream URL.');return}if(d.src)URL.revokeObjectURL(d.src);d.src=src;d.buffer=null;d.analysis={bpm:null,key:null};d.cues={};d.loop=false;d.el.src=src;d.el.load();$('name'+id).textContent='RADIO · '+(row.name||'Live stream');$('bpm'+id).textContent='LIVE';$('key'+id).textContent='STREAM';$('beat'+id).textContent='RADIO';drawWave(id,null);try{await enable();buildGraph(d);d.el.playbackRate=1;await d.el.play();$('play'+id).textContent='❚❚ PAUSE';$('platter'+id).classList.add('playing')}catch(e){$('aiText').textContent='Radio stream selected for Deck '+id+'. Playback may be blocked by the station or browser; press PLAY on the deck.'}advice()}
+async function loadRadioDeck(id,row){
+ const d=decks[id],src=row.url_resolved||row.url;
+ if(!src||!src.startsWith("https://")){setRadioStatus("Station unavailable","No secure stream URL");return;}
+ radioAudio.pause();$("radioFloat").classList.remove("playing");
+ if(d.src&&String(d.src).startsWith("blob:"))URL.revokeObjectURL(d.src);
+ d.src=src;d.buffer=null;d.analysis={bpm:null,key:null};d.cues={};d.loop=false;
+ d.el.pause();d.el.src=src;d.el.load();
+ $("name"+id).textContent="RADIO · "+(row.name||"Live stream");
+ $("bpm"+id).textContent="LIVE";$("key"+id).textContent="STREAM";$("beat"+id).textContent="RADIO";
+ $("time"+id).textContent="00:00";drawWave(id,null);setRadioStatus(row.name||"Live radio","Routed to Deck "+id);
+ try{
+  await enable();d.el.playbackRate=1;await d.el.play();
+  $("play"+id).textContent="Ⅱ PAUSE";$("platter"+id).classList.add("playing");
+  djLastTouched="Loaded radio "+(row.name||"station")+" onto Deck "+id;refreshDjCoach();
+ }catch(e){
+  $("aiText").textContent="Radio stream selected for Deck "+id+". Playback may be blocked by the station or browser; press PLAY on the deck.";
+  setRadioStatus(row.name||"Live radio","Loaded on Deck "+id+" · press PLAY if needed");
+  refreshDjCoach();
+ }
+ advice();
+}
 function renderRadioRows(rows){
  const host=$("stationList");host.innerHTML="";
  if(!rows.length){host.textContent="No secure playable stations were returned for this category. Try another genre.";return;}
