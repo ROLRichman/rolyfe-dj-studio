@@ -276,10 +276,125 @@ function initDeck(id){const el=new Audio();el.preload="metadata";el.crossOrigin=
 function buildGraph(d){const c=audio();if(!c||d.source)return;try{d.source=c.createMediaElementSource(d.el);let node=d.source;["low","mid","high"].forEach((type,i)=>{const f=c.createBiquadFilter();f.type=["lowshelf","peaking","highshelf"][i];f.frequency.value=[180,1000,6000][i];f.gain.value=0;node.connect(f);node=f;d.eq.push(f)});d.filter=c.createBiquadFilter();d.filter.type="lowpass";d.filter.frequency.value=20000;node.connect(d.filter);d.gain=c.createGain();d.gain.gain.value=1;d.filter.connect(d.gain);d.mixGain=c.createGain();d.gain.connect(d.mixGain);d.analyser=c.createAnalyser();d.analyser.fftSize=256;d.mixGain.connect(d.analyser);d.analyser.connect(master)}catch(e){console.warn(e);$("audioStatus").textContent="● AUDIO GRAPH ERROR"}}
 // Six default removable crate entries. Audio is not fabricated or bundled.
 const DEFAULT_CRATE=['R..O.L- PROJECT. 1.wav','R.O.L- PRODUCTION 2.wav','R.O.L- PROJECT ONE STAFF.wav','ROL FEST 1...%.wav','ROL-SWFOLDER 1.mp3','TRAFFIC 4.mp3'];
-let crateItems;try{crateItems=JSON.parse(localStorage.getItem('rolyfeDjCrate')||'null')}catch(e){crateItems=null}if(!Array.isArray(crateItems))crateItems=DEFAULT_CRATE.map(name=>({id:'default-'+name,name,attached:false}));crateItems.forEach((item,i)=>{if(!item.id)item.id='crate-'+i+'-'+item.name;});
-function renderCrate(){const host=$('crateBody');if(!host)return;host.innerHTML='<div class="listen-note">Audio attachments are stored locally in this browser. Attach a file, then load it into either deck.</div><button id="crateAdd">＋ ADD TRACK TO CRATE</button>';const add=$("crateAdd");add.onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='audio/*';input.onchange=()=>{if(input.files&&input.files[0]){crateItems.push({id:'track-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),name:input.files[0].name,file:input.files[0]});persistCrateFile(crateItems[crateItems.length-1].id,input.files[0]);saveCrate()}};input.click()};crateItems.forEach((item,i)=>{const row=document.createElement('div');row.className='crate-track';const title=document.createElement('div');title.className='crate-title';title.textContent=item.name+(item.file?' · attached':' · audio file needed');const loadA=document.createElement('button');loadA.textContent='Load A';const loadB=document.createElement('button');loadB.textContent='Load B';const attach=document.createElement('button');attach.textContent='Attach / Replace';const remove=document.createElement('button');remove.textContent='Remove';loadA.disabled=loadB.disabled=!item.file;loadA.onclick=()=>loadCrateFile(i,'A');loadB.onclick=()=>loadCrateFile(i,'B');attach.onclick=()=>{const input=document.createElement('input');input.type='file';input.accept='audio/*';input.onchange=()=>{if(input.files&&input.files[0]){item.file=input.files[0];item.name=input.files[0].name;persistCrateFile(item.id,item.file);saveCrate()}};input.click()};remove.onclick=()=>{deleteCrateFile(item.id);crateItems.splice(i,1);saveCrate()};row.append(title,loadA,loadB,attach,remove);host.append(row)});}
-function crateDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open("ROLyfeDJCrate",1);req.onupgradeneeded=()=>req.result.createObjectStore("audio");req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}async function persistCrateFile(i,file){try{const db=await crateDB(),tx=db.transaction("audio","readwrite");tx.objectStore("audio").put(file,String(i));tx.oncomplete=()=>db.close()}catch(e){console.warn("Crate storage unavailable",e)}}async function deleteCrateFile(i){try{const db=await crateDB(),tx=db.transaction("audio","readwrite");tx.objectStore("audio").delete(String(i));tx.oncomplete=()=>db.close()}catch(e){}}async function hydrateCrate(){try{const db=await crateDB();crateItems.forEach(async(item,i)=>{try{const tx=db.transaction("audio","readonly"),store=tx.objectStore("audio");let req=store.get(item.id),file=await new Promise(resolve=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>resolve(null)});if(!file){const oldTx=db.transaction("audio","readonly"),oldReq=oldTx.objectStore("audio").get(String(i));file=await new Promise(resolve=>{oldReq.onsuccess=()=>resolve(oldReq.result);oldReq.onerror=()=>resolve(null)});if(file)await persistCrateFile(item.id,file)}if(file){item.file=file;item.attached=true;renderCrate()}}catch(e){console.warn(e)}});setTimeout(()=>db.close(),1200)}catch(e){console.warn(e)}}function saveCrate(){localStorage.setItem('rolyfeDjCrate',JSON.stringify(crateItems.map(x=>({id:x.id,name:x.name,attached:!!x.file}))));renderCrate()}
-function loadCrateFile(i,id){const item=crateItems[i];if(item&&item.file)load(id,item.file);else alert('Attach the audio file to this crate entry first.');}
+let crateItems;try{crateItems=JSON.parse(localStorage.getItem('rolyfeDjCrate')||'null')}catch(e){crateItems=null}
+if(!Array.isArray(crateItems))crateItems=DEFAULT_CRATE.map(name=>({id:'default-'+name,name,attached:false}));
+crateItems.forEach((item,i)=>{if(!item.id)item.id='crate-'+i+'-'+item.name;});
+
+function crateDB(){
+ return new Promise((resolve,reject)=>{
+  if(!window.indexedDB){reject(new Error('This browser does not support local audio storage.'));return;}
+  const req=indexedDB.open('ROLyfeDJCrate',1);
+  req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('audio'))req.result.createObjectStore('audio');};
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error||new Error('Could not open the local crate database.'));
+ });
+}
+function readCrateFile(db,key){
+ return new Promise((resolve,reject)=>{
+  let req;
+  try{req=db.transaction('audio','readonly').objectStore('audio').get(key);}
+  catch(e){reject(e);return;}
+  req.onsuccess=()=>resolve(req.result||null);
+  req.onerror=()=>reject(req.error||new Error('Could not read a crate audio file.'));
+ });
+}
+function writeCrateFile(db,key,file){
+ return new Promise((resolve,reject)=>{
+  let tx;
+  try{tx=db.transaction('audio','readwrite');tx.objectStore('audio').put(file,key);}
+  catch(e){reject(e);return;}
+  tx.oncomplete=()=>resolve(true);
+  tx.onerror=()=>reject(tx.error||new Error('Could not save a crate audio file.'));
+  tx.onabort=()=>reject(tx.error||new Error('Saving a crate audio file was interrupted.'));
+ });
+}
+async function persistCrateFile(key,file){
+ const db=await crateDB();
+ try{return await writeCrateFile(db,key,file);}
+ finally{db.close();}
+}
+async function deleteCrateFile(key){
+ let db;
+ try{
+  db=await crateDB();
+  await new Promise((resolve,reject)=>{
+   let tx;
+   try{tx=db.transaction('audio','readwrite');tx.objectStore('audio').delete(key);}
+   catch(e){reject(e);return;}
+   tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+  });
+ }catch(e){console.warn('Could not remove crate audio',e);}
+ finally{if(db)db.close();}
+}
+async function hydrateCrate(){
+ let db=null;
+ try{
+  db=await crateDB();
+  for(let i=0;i<crateItems.length;i++){
+   const item=crateItems[i];
+   let file=await readCrateFile(db,item.id);
+   if(!file){
+    file=await readCrateFile(db,String(i));
+    if(file)await writeCrateFile(db,item.id,file);
+   }
+   if(file){item.file=file;item.attached=true;}
+  }
+ }catch(e){console.warn('Crate restore unavailable',e);}
+ finally{if(db)db.close();renderCrate();}
+}
+function saveCrate(){
+ localStorage.setItem('rolyfeDjCrate',JSON.stringify(crateItems.map(x=>({id:x.id,name:x.name,attached:!!x.file}))));
+ renderCrate();
+}
+function chooseCrateAudio(i,deckId){
+ const item=crateItems[i];if(!item)return;
+ const input=document.createElement('input');input.type='file';input.accept='audio/*';
+ input.onchange=async()=>{
+  const file=input.files&&input.files[0];if(!file)return;
+  item.file=file;item.name=file.name;item.attached=true;saveCrate();
+  try{await persistCrateFile(item.id,file);}
+  catch(e){console.warn('Audio is only available for this session',e);alert('The track can play now, but this browser could not save it for next time.');}
+  if(deckId){
+   try{await load(deckId,file);}
+   catch(e){alert('Could not load this audio file: '+e.message);}
+  }
+ };
+ input.click();
+}
+function loadCrateFile(i,id){
+ const item=crateItems[i];if(!item)return;
+ if(item.file){load(id,item.file).catch(e=>alert('Could not load this audio file: '+e.message));return;}
+ chooseCrateAudio(i,id);
+}
+function renderCrate(){
+ const host=$('crateBody');if(!host)return;
+ host.innerHTML='<div class="listen-note">The six starter rows are crate slots, not preloaded audio files. Tap Load A or Load B to choose the matching track from this tablet. Once saved, each track stays in this browser for future sessions.</div><button id="crateAdd">＋ ADD TRACK TO CRATE</button>';
+ const add=$('crateAdd');
+ add.onclick=()=>chooseNewCrateAudio();
+ crateItems.forEach((item,i)=>{
+  const row=document.createElement('div');row.className='crate-track';
+  const title=document.createElement('div');title.className='crate-title';title.textContent=item.name+(item.file?' · READY':' · AUDIO NEEDED');
+  const loadA=document.createElement('button');loadA.textContent='Load A';loadA.classList.add('led-target');
+  const loadB=document.createElement('button');loadB.textContent='Load B';loadB.classList.add('led-target');
+  const attach=document.createElement('button');attach.textContent='Attach / Replace';attach.classList.add('led-target');
+  const remove=document.createElement('button');remove.textContent='Remove';remove.classList.add('led-target');
+  loadA.onclick=()=>loadCrateFile(i,'A');loadB.onclick=()=>loadCrateFile(i,'B');
+  attach.onclick=()=>chooseCrateAudio(i,null);
+  remove.onclick=()=>{deleteCrateFile(item.id);crateItems.splice(i,1);saveCrate();};
+  row.append(title,loadA,loadB,attach,remove);host.append(row);
+ });
+}
+function chooseNewCrateAudio(){
+ const input=document.createElement('input');input.type='file';input.accept='audio/*';
+ input.onchange=async()=>{
+  const file=input.files&&input.files[0];if(!file)return;
+  const item={id:'track-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),name:file.name,file};
+  crateItems.push(item);saveCrate();
+  try{await persistCrateFile(item.id,file);}catch(e){console.warn('Could not save added audio',e);alert('This track is available for this session, but local saving failed.');}
+ };
+ input.click();
+}
+renderCrate();hydrateCrate();
 $('themeSelect').onchange=e=>{document.body.className='theme-'+e.target.value;document.documentElement.dataset.theme=e.target.value;localStorage.setItem('rolyfeDjTheme',e.target.value)};const savedTheme=localStorage.getItem('rolyfeDjTheme')||'classic';document.body.className='theme-'+savedTheme;document.documentElement.dataset.theme=savedTheme;$('themeSelect').value=savedTheme;renderCrate();hydrateCrate();const ws=localStorage.getItem('rolyfeDjWheel')||'groove';document.body.classList.add('wheel-'+ws);$('wheelStyle').value=ws;$('wheelStyle').onchange=e=>{document.body.classList.remove('wheel-groove','wheel-neon','wheel-pulse','wheel-chrome');document.body.classList.add('wheel-'+e.target.value);localStorage.setItem('rolyfeDjWheel',e.target.value)};
 async function enable(){const c=audio();if(!c)return;await c.resume();["A","B"].forEach(id=>buildGraph(decks[id]));started=true;$("audioStatus").textContent="● AUDIO ENGINE ACTIVE";$("startAudio").textContent="Audio Enabled";applyMixer()}
 $("startAudio").addEventListener("click",enable);
@@ -342,7 +457,7 @@ $("recStop").onclick=()=>{if(mixRecorder&&mixRecorder.state!=="inactive")mixReco
 
 $("platformOpen").onclick=()=>{const u=$("platformUrl").value.trim();if(!u)return;let embed=u;if(u.includes("youtube.com")||u.includes("youtu.be")){let id="";try{const url=new URL(u);id=url.hostname.includes("youtu.be")?url.pathname.slice(1):url.searchParams.get("v")||url.pathname.split("/").filter(Boolean).pop()}catch(e){}if(id)embed="https://www.youtube.com/embed/"+id+"?autoplay=1"}const frame=$("platformFrame");frame.style.display="block";frame.src=embed};$("platformClose").onclick=()=>{const frame=$("platformFrame");frame.src="";frame.style.display="none"};
 /* Selectable LED button lighting: default off, user-controlled speed. */
-const ledTargets=['#startAudio','#syncAll','#playA','#playB','#cueA','#cueB','#loopA','#loopB','#recStart','#recStop','#atlasSend','#radioSearch','#radioNext','[data-cue]'];
+const ledTargets=['#startAudio','#syncAll','.deckbuttons button','.pads .pad','.crate-track button','.transport-buttons button','#recStart','#recStop','#atlasSend','#radioSearch','#radioNext'];
 document.querySelectorAll(ledTargets.join(',')).forEach(el=>el.classList.add('led-target'));
 const ledSwitch=$('ledGlowToggle'),ledSpeed=$('ledSpeed'),ledState=$('ledGlowState');
 function applyLedSettings(){const on=!!ledSwitch.checked;document.body.classList.toggle('led-glow',on);document.body.style.setProperty('--led-speed',(Number(ledSpeed.value)||1.25)+'s');ledState.textContent=on?'ON · PULSING':'OFF · BUTTONS NORMAL';localStorage.setItem('rolyfeDjLedGlow',on?'on':'off');localStorage.setItem('rolyfeDjLedSpeed',ledSpeed.value)}
@@ -358,7 +473,7 @@ $("weatherCheck").onclick=async()=>{const city=$("weatherCity").value.trim();if(
 $("midiConnect").onclick=async()=>{if(!navigator.requestMIDIAccess){$("midiStatus").textContent="Web MIDI is unavailable in this browser. Try a supported desktop browser.";return}try{const access=await navigator.requestMIDIAccess();const inputs=[...access.inputs.values()];if(!inputs.length){$("midiStatus").textContent="Permission granted, but no MIDI input detected.";return}$("midiStatus").textContent="Connected: "+inputs.map(i=>i.name).join(", ")+". Input events detected; mapping remains basic.";inputs.forEach(input=>input.onmidimessage=e=>{const [status,data1,data2]=e.data;const val=data2/127;if(status>=176&&status<=191){const cc=data1;if(cc===1)$("crossfader").value=val;else if(cc===2)$("levelA").value=val;else if(cc===3)$("levelB").value=val;else if(cc===4)$("lowA").value=val;else if(cc===5)$("lowB").value=val;applyMixer();}})}catch(e){$("midiStatus").textContent="MIDI connection failed: "+e.message}};
 
 // 16 assignable sample pads (local audio files decoded and routed to master).
-const sampleBuffers=Array(16).fill(null),sampleNames=Array(16).fill("");const sg=$("samplerGrid");for(let i=0;i<16;i++){const btn=document.createElement("button");btn.className="sampler-pad";btn.textContent="PAD "+String(i+1).padStart(2,"0")+" · TAP TO ASSIGN";btn.onclick=()=>{if(sampleBuffers[i]){const c=audio();if(c){const src=c.createBufferSource();src.buffer=sampleBuffers[i];src.connect(master);src.start();btn.classList.add("loaded");setTimeout(()=>btn.classList.remove("loaded"),260)}}else{const inp=document.createElement("input");inp.type="file";inp.accept="audio/*";inp.onchange=async()=>{const file=inp.files?.[0];if(!file)return;try{const c=audio();await c.resume();sampleBuffers[i]=await c.decodeAudioData(await file.arrayBuffer());sampleNames[i]=file.name;btn.textContent="PAD "+(i+1)+" · "+file.name;btn.classList.add("loaded")}catch(e){btn.textContent="PAD "+(i+1)+" · decode error"}};inp.click()}};sg.append(btn)}
+const sampleBuffers=Array(16).fill(null),sampleNames=Array(16).fill("");const sg=$("samplerGrid");for(let i=0;i<16;i++){const btn=document.createElement("button");btn.className="sampler-pad led-target";btn.textContent="PAD "+String(i+1).padStart(2,"0")+" · TAP TO ASSIGN";btn.onclick=()=>{if(sampleBuffers[i]){const c=audio();if(c){const src=c.createBufferSource();src.buffer=sampleBuffers[i];src.connect(master);src.start();btn.classList.add("loaded");setTimeout(()=>btn.classList.remove("loaded"),260)}}else{const inp=document.createElement("input");inp.type="file";inp.accept="audio/*";inp.onchange=async()=>{const file=inp.files?.[0];if(!file)return;try{const c=audio();await c.resume();sampleBuffers[i]=await c.decodeAudioData(await file.arrayBuffer());sampleNames[i]=file.name;btn.textContent="PAD "+(i+1)+" · "+file.name;btn.classList.add("loaded")}catch(e){btn.textContent="PAD "+(i+1)+" · decode error"}};inp.click()}};sg.append(btn)}
 $("boothZoom").oninput=e=>document.documentElement.style.setProperty("--booth-zoom",e.target.value+"%");$("boothReset").onclick=()=>{$("boothZoom").value=100;document.documentElement.style.setProperty("--booth-zoom","100%")};$("boothFocus").onclick=async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.();else await document.exitFullscreen?.()}catch(e){alert("Fullscreen is not available in this browser.")}};
 
 // Quick source player: embed links when supported; open non-embeddable services separately.
@@ -373,9 +488,7 @@ function floatingSeek(seconds){if(radioAudio.src&&radioAudio.duration&&isFinite(
 $("mediaRew").onclick=()=>floatingSeek(-15);$("mediaFwd").onclick=()=>floatingSeek(15);$("mediaNext").onclick=()=>nextRadio();$("mediaPlay").onclick=()=>{if(radioAudio.src){if(radioAudio.paused)radioAudio.play().catch(()=>{});else radioAudio.pause();$("mediaStatus").textContent="Radio playback toggled."}else if(youtubeCommand("playVideo")){$("mediaStatus").textContent="YouTube play command sent."}else $("mediaStatus").textContent="Load a radio station or supported embedded source first."};
 // YouTube API controls enabled for compatible iframe source
 
-/* Reliable ID-based IndexedDB crate persistence and mirrored pitch needle. */
-async function persistCrateFile(key,file){try{const db=await crateDB(),tx=db.transaction("audio","readwrite");tx.objectStore("audio").put(file,key);tx.oncomplete=()=>db.close()}catch(e){console.warn("Crate storage unavailable",e)}}
-async function deleteCrateFile(key){try{const db=await crateDB(),tx=db.transaction("audio","readwrite");tx.objectStore("audio").delete(key);tx.oncomplete=()=>db.close()}catch(e){}}
+/* Crate persistence is defined beside the crate UI above; pitch controls follow. */
 ["A","B"].forEach(id=>{const n=$("needle"+id),p=$("pitch"+id),v=$("needleVal"+id);if(!n||!p)return;const sync=()=>{p.value=n.value;p.dispatchEvent(new Event("input",{bubbles:true}));if(v)v.textContent=(+n.value).toFixed(1)+"%"};n.addEventListener("input",sync);p.addEventListener("input",()=>{n.value=p.value;if(v)v.textContent=(+p.value).toFixed(1)+"%"});n.addEventListener("change",sync)});["A","B"].forEach(id=>{const b=$("eject"+id);if(b)b.onclick=()=>{const d=decks[id];d.el.pause();d.el.removeAttribute("src");d.el.load();if(d.src){URL.revokeObjectURL(d.src);d.src=null}d.buffer=null;d.analysis={bpm:null,key:null};d.cues={};d.loop=false;$("name"+id).textContent="EMPTY DECK";$("bpm"+id).textContent="—";$("key"+id).textContent="—";$("time"+id).textContent="00:00";$("beat"+id).textContent="—";drawWave(id,null);$("platter"+id)?.classList.remove("playing","scratching");advice()}});function tick(){for(const id of ["A","B"]){const d=decks[id];if(d.el.duration&&d.analysis.bpm){let beat=Math.floor(d.el.currentTime*d.analysis.bpm/60)%4+1;$("beat"+id).textContent=beat+"/4"}$("head"+id).style.left=(d.el.duration?Math.max(0,Math.min(100,d.el.currentTime/d.el.duration*100)):0)+"%";if(d.analyser){const samples=new Uint8Array(d.analyser.fftSize);d.analyser.getByteTimeDomainData(samples);let sum=0;for(let i=0;i<samples.length;i++){let v=(samples[i]-128)/128;sum+=v*v}let rms=Math.sqrt(sum/samples.length);$("meter"+id).style.width=Math.min(100,Math.round(rms*220))+"%"}}raf=requestAnimationFrame(tick)}tick();
 window.addEventListener("resize",()=>{drawWave("A",decks.A.buffer);drawWave("B",decks.B.buffer)});
 window.addEventListener("pagehide",()=>{cancelAnimationFrame(raf);["A","B"].forEach(id=>{if(decks[id].src)URL.revokeObjectURL(decks[id].src)})});
