@@ -294,7 +294,7 @@ body.led-glow .led-target{box-shadow:0 0 7px color-mix(in srgb,var(--led-color,v
 <div id="sportsLinks" class="station-list"><div class="station-row"><div><strong>ESPN Radio</strong><small>Official live audio and shows</small></div><button data-open="https://www.espn.com/radio/play">Open player</button></div></div><div class="listen-card" style="margin-top:10px;padding:8px"><iframe id="sportsFrame" title="Sports radio and podcast player" src="https://a.espnradio.com/CR3/play/_/s/espn.html" loading="lazy" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" style="width:100%;height:270px;border:0;border-radius:9px;background:#071017"></iframe><p class="listen-note" id="sportsFrameNote">ESPN official player embedded here when its publisher permits in-page playback. Your floating radio stays available above.</p></div>
 <p class="listen-note">Some broadcasters block third-party embedding. If that happens, the in-page player remains available for compatible streams; the official source is offered as a fallback.</p>
 </div>
-<div class="listen-card">
+<div class="listen-card" id="savedStationsCard" hidden>
 <h3>MY LISTENING LIST</h3>
 <div class="station-list" id="savedStationList"><div class="listen-note">Your saved stations will appear here on this device.</div></div>
 <p class="listen-note">Saved stations are stored locally in this browser.</p>
@@ -539,30 +539,82 @@ let radioRows=[],radioIndex=-1,radioTag="sports",atlasHistory=[],voiceOn=true,re
 const radioAudio=$("radioAudio");if(window.matchMedia("(max-width:1100px), (pointer:coarse)").matches){$("radioFloat").classList.add("collapsed");radioAudio.hidden=true;$("radioCollapse").textContent="+";}
 function radioSaved(){try{return JSON.parse(localStorage.getItem("rolyfeDjSavedStations")||"[]")}catch(_){return[]}}
 function saveRadioStation(row){const rows=radioSaved();if(!rows.some(x=>x.stationuuid===row.stationuuid)){rows.unshift({stationuuid:row.stationuuid,name:row.name, country:row.country, url_resolved:row.url_resolved||row.url});localStorage.setItem("rolyfeDjSavedStations",JSON.stringify(rows.slice(0,40)))}renderSavedStations()}
-function renderSavedStations(){const host=$("savedStationList"),rows=radioSaved();host.innerHTML="";if(!rows.length){host.innerHTML='<div class="listen-note">Your saved stations will appear here on this device.</div>';return}rows.forEach((r,i)=>{const el=document.createElement("div");el.className="station-row";const info=document.createElement("div");info.innerHTML="<strong></strong><small></small>";info.querySelector("strong").textContent=r.name;info.querySelector("small").textContent=r.country||"Saved station";const play=document.createElement("button");play.textContent="Play";play.onclick=()=>playRadio(r);const remove=document.createElement("button");remove.textContent="×";remove.onclick=()=>{const next=radioSaved();next.splice(i,1);localStorage.setItem("rolyfeDjSavedStations",JSON.stringify(next));renderSavedStations()};el.append(info,play,remove);const loadA=document.createElement("button");loadA.textContent="Load Deck A";loadA.onclick=()=>loadRadioDeck("A",r);const loadB=document.createElement("button");loadB.textContent="Load Deck B";loadB.onclick=()=>loadRadioDeck("B",r);el.append(loadA,loadB);host.append(el)})}
+function renderSavedStations(){
+ const host=$("savedStationList"),rows=radioSaved();host.innerHTML="";
+ if(!rows.length){host.textContent="Your saved stations will appear here on this device.";return;}
+ rows.forEach((r,i)=>{
+  const row=document.createElement("div");row.className="station-row";
+  const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("small");
+  name.textContent=r.name||"Saved station";meta.textContent=r.country||"Saved station";info.append(name,meta);
+  const actions=document.createElement("div");actions.className="station-actions saved-station-actions";
+  const play=document.createElement("button");play.textContent="▶ PLAY";play.onclick=()=>playRadio(r);
+  const loadA=document.createElement("button");loadA.textContent="LOAD DECK A";loadA.onclick=()=>loadRadioDeck("A",r);
+  const loadB=document.createElement("button");loadB.textContent="LOAD DECK B";loadB.onclick=()=>loadRadioDeck("B",r);
+  const remove=document.createElement("button");remove.textContent="REMOVE";remove.onclick=()=>{const next=radioSaved();next.splice(i,1);localStorage.setItem("rolyfeDjSavedStations",JSON.stringify(next));renderSavedStations();};
+  actions.append(play,loadA,loadB,remove);row.append(info,actions);host.append(row);
+ });
+}
 function setRadioStatus(title,sub){$("radioNow").textContent=title;$("radioSub").textContent=sub||"RO’Lyfe Just Listen"}
-async function findRadio(tag=radioTag){radioTag=tag;$("stationList").innerHTML='<div class="listen-note">Searching live station directory…</div>';try{const url=RADIO_API+"?action=search&tag="+encodeURIComponent(tag)+"&limit=40";const res=await fetch(url,{headers:{Accept:"application/json"}});const data=await res.json();if(!res.ok||!Array.isArray(data.data))throw new Error(data.error||"Station directory unavailable");radioRows=data.data.filter(x=>(x.url_resolved||x.url)&&String(x.url_resolved||x.url).startsWith("https://"));renderRadioRows(radioRows)}catch(e){$("stationList").innerHTML='<div class="listen-note">Could not load stations right now: '+String(e.message||e)+'</div>'}}
+async function findRadio(tag=radioTag){
+ radioTag=tag;
+ const label=String(tag).replace(/-/g," ").toUpperCase();
+ $("radioCategoryLabel").textContent="LIVE RADIO · "+label;
+ $("listenGenres").querySelectorAll("button").forEach(button=>button.classList.toggle("active",button.dataset.radioTag===tag));
+ $("stationList").textContent="Searching live station directory…";
+ try{
+  const url=RADIO_API+"?action=search&tag="+encodeURIComponent(tag)+"&limit=40";
+  const res=await fetch(url,{headers:{Accept:"application/json"}}),data=await res.json();
+  if(!res.ok||!Array.isArray(data.data))throw new Error(data.error||"Station directory unavailable");
+  radioRows=data.data.filter(x=>(x.url_resolved||x.url)&&String(x.url_resolved||x.url).startsWith("https://"));
+  renderRadioRows(radioRows);
+ }catch(e){$("stationList").textContent="Could not load stations right now: "+String(e.message||e);}
+}
 async function loadRadioDeck(id,row){const d=decks[id],src=row.url_resolved||row.url;if(!src||!src.startsWith('https://')){alert('This station does not have a secure stream URL.');return}if(d.src)URL.revokeObjectURL(d.src);d.src=src;d.buffer=null;d.analysis={bpm:null,key:null};d.cues={};d.loop=false;d.el.src=src;d.el.load();$('name'+id).textContent='RADIO · '+(row.name||'Live stream');$('bpm'+id).textContent='LIVE';$('key'+id).textContent='STREAM';$('beat'+id).textContent='RADIO';drawWave(id,null);try{await enable();buildGraph(d);d.el.playbackRate=1;await d.el.play();$('play'+id).textContent='❚❚ PAUSE';$('platter'+id).classList.add('playing')}catch(e){$('aiText').textContent='Radio stream selected for Deck '+id+'. Playback may be blocked by the station or browser; press PLAY on the deck.'}advice()}
-function renderRadioRows(rows){const host=$("stationList");host.innerHTML="";if(!rows.length){host.innerHTML='<div class="listen-note">No secure playable stations were returned for this category. Try another genre.</div>';return}rows.forEach((r,i)=>{const el=document.createElement("div");el.className="station-row";const info=document.createElement("div");info.innerHTML="<strong></strong><small></small>";info.querySelector("strong").textContent=r.name||"Unnamed station";info.querySelector("small").textContent=[r.country,r.language,r.bitrate? r.bitrate+" kbps":""].filter(Boolean).join(" · ");const actions=document.createElement("div");actions.style.display="flex";actions.style.gap="5px";const play=document.createElement("button");play.textContent="▶ Play";play.onclick=()=>{radioIndex=i;playRadio(r)};const save=document.createElement("button");save.textContent="☆";save.title="Save station";save.onclick=()=>saveRadioStation(r);const loadA=document.createElement("button");loadA.textContent="Load Deck A";loadA.onclick=()=>loadRadioDeck("A",r);const loadB=document.createElement("button");loadB.textContent="Load Deck B";loadB.onclick=()=>loadRadioDeck("B",r);actions.append(play,save,loadA,loadB);el.append(info,actions);host.append(el)})}
+function renderRadioRows(rows){
+ const host=$("stationList");host.innerHTML="";
+ if(!rows.length){host.textContent="No secure playable stations were returned for this category. Try another genre.";return;}
+ rows.forEach((r,i)=>{
+  const row=document.createElement("div");row.className="station-row";
+  const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("small");
+  name.textContent=r.name||"Unnamed station";
+  meta.textContent=[r.country,r.language,r.bitrate?r.bitrate+" kbps":""].filter(Boolean).join(" · ");
+  info.append(name,meta);
+  const actions=document.createElement("div");actions.className="station-actions";
+  const play=document.createElement("button");play.textContent="▶ PLAY";play.onclick=()=>{radioIndex=i;playRadio(r);};
+  const save=document.createElement("button");save.textContent="☆ SAVE";save.title="Save station";save.onclick=()=>saveRadioStation(r);
+  const loadA=document.createElement("button");loadA.textContent="LOAD DECK A";loadA.onclick=()=>loadRadioDeck("A",r);
+  const loadB=document.createElement("button");loadB.textContent="LOAD DECK B";loadB.onclick=()=>loadRadioDeck("B",r);
+  actions.append(play,save,loadA,loadB);row.append(info,actions);host.append(row);
+ });
+}
 async function playRadio(row){const src=row.url_resolved||row.url;if(!src||!src.startsWith("https://")){setRadioStatus("Station unavailable","No secure stream URL");return}radioAudio.src=src;radioAudio.load();try{await radioAudio.play();$("radioFloat").classList.add("playing");setRadioStatus(row.name||"Live radio",row.country||"Streaming now")}catch(e){setRadioStatus(row.name||"Station selected","Tap Play on the audio controls to start")}}
 function nextRadio(){if(!radioRows.length)return;radioIndex=(radioIndex+1)%radioRows.length;playRadio(radioRows[radioIndex])}
 function atlasBubble(role,text){const el=document.createElement("div");el.className="atlas-msg "+(role==="user"?"user":"");el.textContent=text;$("atlasLog").append(el);$("atlasLog").scrollTop=$("atlasLog").scrollHeight}
-function atlasAction(action,value){if(action==="open_radio"){$("listenDrawer").open=true;$("justListen").scrollIntoView({behavior:"smooth",block:"start"});if(value)findRadio(value)}
+function atlasAction(action,value){if(action==="open_radio"){openFloatingRadio();if(value)findRadio(value)}
 else if(action==="next_station")nextRadio();
 else if(action==="save_station"){const row=radioRows[radioIndex];if(row)saveRadioStation(row)}
 else if(action==="set_genre"){const v=(value||"sports").toLowerCase();findRadio(v)}
-else if(action==="open_saved"){$("listenDrawer").open=true;renderSavedStations()}
-else if(action==="show_trending"||action==="surprise"){$("listenDrawer").open=true;findRadio("top 40")}
-else if(action==="search_podcast"){$("listenDrawer").open=true;$("sportsFrame").src="https://podcasts.apple.com/us/search?term="+encodeURIComponent(value||"sports");$("sportsFrameNote").textContent="Podcast directory search requested by Atlas. If the publisher blocks embedding, use the search inside the listening panel or the floating radio for live stations."}
-else if(action==="search_artist"){$("listenDrawer").open=true;$("sportsFrame").src="https://music.youtube.com/search?q="+encodeURIComponent(value||"");$("sportsFrameNote").textContent="Artist search loaded in the in-page media panel when the provider allows embedding."}}
-async function askAtlas(text){const prompt=(text||"").trim();if(!prompt)return;atlasBubble("user",prompt);atlasHistory.push({role:"user",content:prompt});$("atlasStatus").textContent="Atlas is thinking…";$("atlasSend").disabled=true;try{const res=await fetch(ATLAS_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:atlasHistory.slice(-8),language:"English (en-US)",pageContext:{section:"radio",currentStation:radioRows[radioIndex]?.name||"",availableStations:radioRows.slice(0,8).map(x=>x.name)}})});const data=await res.json();if(!res.ok||!data.reply)throw new Error(data.error||"Atlas could not respond");atlasHistory.push({role:"assistant",content:data.reply});atlasBubble("assistant",data.reply);atlasAction(data.action,data.value);$("atlasStatus").textContent="Atlas is ready. Ask another question or use the microphone.";if(voiceOn&&"speechSynthesis"in window){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(data.reply);u.rate=1.02;u.pitch=1; speechSynthesis.speak(u)}}catch(e){atlasBubble("assistant","I couldn't connect to Atlas right now. "+String(e.message||e));$("atlasStatus").textContent="Connection issue. The local radio controls still work."}finally{$("atlasSend").disabled=false}}
-$("radioSearch").onclick=()=>findRadio(radioTag);$("radioNext").onclick=nextRadio;$("radioSaved").onclick=()=>{renderSavedStations();$("savedStationList").scrollIntoView({behavior:"smooth",block:"nearest"})};
-$("listenGenres").querySelectorAll("button").forEach(b=>b.onclick=()=>{$("listenGenres").querySelectorAll("button").forEach(x=>x.classList.remove("active"));b.classList.add("active");findRadio(b.dataset.radioTag)});
+else if(action==="open_saved"){openFloatingRadio();$("savedStationsCard").hidden=false;renderSavedStations()}
+else if(action==="show_trending"||action==="surprise"){openFloatingRadio();findRadio("top 40")}
+else if(action==="search_podcast"){openFloatingRadio();$("sportsFrame").src="https://podcasts.apple.com/us/search?term="+encodeURIComponent(value||"sports");$("sportsFrameNote").textContent="Podcast directory search requested by Atlas. If the publisher blocks embedding, use the search inside the listening panel or the floating radio for live stations."}
+else if(action==="search_artist"){openFloatingRadio();$("sportsFrame").src="https://music.youtube.com/search?q="+encodeURIComponent(value||"");$("sportsFrameNote").textContent="Artist search loaded in the in-page media panel when the provider allows embedding."}}
+async function askAtlas(text){const prompt=(text||"").trim();if(!prompt)return;atlasBubble("user",prompt);atlasHistory.push({role:"user",content:prompt});$("atlasStatus").textContent="Atlas is thinking…";$("atlasSend").disabled=true;try{const res=await fetch(ATLAS_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:atlasHistory.slice(-8),language:"English (en-US)",pageContext:{section:"radio-and-dj-booth",currentStation:radioRows[radioIndex]?.name||"",availableStations:radioRows.slice(0,8).map(x=>x.name),djSession:captureDjContext()}})});const data=await res.json();if(!res.ok||!data.reply)throw new Error(data.error||"Atlas could not respond");atlasHistory.push({role:"assistant",content:data.reply});atlasBubble("assistant",data.reply);atlasAction(data.action,data.value);$("atlasStatus").textContent="Atlas is ready. Ask another question or use the microphone.";if(voiceOn&&"speechSynthesis"in window){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(data.reply);u.rate=1.02;u.pitch=1; speechSynthesis.speak(u)}}catch(e){atlasBubble("assistant","I couldn't connect to Atlas right now. "+String(e.message||e));$("atlasStatus").textContent="Connection issue. The local radio controls still work."}finally{$("atlasSend").disabled=false}}
+$("radioSearch").onclick=()=>findRadio(radioTag);
+$("radioNext").onclick=nextRadio;
+$("radioSaved").onclick=()=>{const card=$("savedStationsCard");card.hidden=!card.hidden;if(!card.hidden){renderSavedStations();card.scrollIntoView({behavior:"smooth",block:"nearest"});} $("radioSaved").textContent=card.hidden?"MY SAVED STATIONS":"HIDE SAVED STATIONS";};
+$("listenGenres").querySelectorAll("button").forEach(b=>b.onclick=()=>findRadio(b.dataset.radioTag));
 $("atlasSend").onclick=()=>{const v=$("atlasInput").value;$("atlasInput").value="";askAtlas(v)};$("atlasInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("atlasSend").click()});
 $("atlasSpeak").onclick=()=>{voiceOn=!voiceOn;$("atlasSpeak").textContent=voiceOn?"🔊 Voice on":"🔇 Voice off"};$("atlasStop").onclick=()=>{if("speechSynthesis"in window)speechSynthesis.cancel()};
 $("atlasMic").onclick=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){$("atlasStatus").textContent="Voice input is not supported in this browser. You can still type to Atlas.";return}if(recognition){recognition.stop();recognition=null;return}recognition=new SR();recognition.lang="en-US";recognition.interimResults=false;recognition.maxAlternatives=1;$("atlasStatus").textContent="Listening… speak now.";recognition.onresult=e=>{const said=e.results[0][0].transcript;$("atlasInput").value=said;askAtlas(said)};recognition.onerror=e=>$("atlasStatus").textContent="Microphone: "+e.error;recognition.onend=()=>{recognition=null};recognition.start()};
+function openFloatingRadio(){
+ $("radioFloat").classList.remove("collapsed");radioAudio.hidden=false;$("radioCollapse").textContent="−";$("listenDrawer").open=true;refreshDjCoach();
+}
+function compactFloatingRadio(){
+ $("radioFloat").classList.add("collapsed");radioAudio.hidden=true;$("radioCollapse").textContent="+";
+}
+$("radioListenToggle").onclick=openFloatingRadio;
+$("radioCollapse").onclick=compactFloatingRadio;
 $("radioMute").onclick=()=>{radioAudio.muted=!radioAudio.muted;$("radioMute").textContent=radioAudio.muted?"UNMUTE":"MUTE"};
-$("radioCollapse").onclick=()=>{$("radioFloat").classList.toggle("collapsed");const collapsed=$("radioFloat").classList.contains("collapsed");radioAudio.hidden=collapsed;$("radioCollapse").textContent=collapsed?"+":"—"};
 radioAudio.addEventListener("play",()=>$("radioFloat").classList.add("playing"));radioAudio.addEventListener("pause",()=>$("radioFloat").classList.remove("playing"));radioAudio.addEventListener("error",()=>setRadioStatus("Stream unavailable","Try another station"));
 $("espnListen").onclick=()=>{$("sportsFrame").src="https://a.espnradio.com/CR3/play/_/s/espn.html";$("sportsFrameNote").textContent="Loading ESPN Radio inside RO’Lyfe DJ Studio."};$("tuneinSports").onclick=()=>{$("sportsFrame").src="https://tunein.com/radio/sports/";$("sportsFrameNote").textContent="Loading TuneIn Sports inside the panel. Some publishers may block embedded playback."};$("sportsPodcasts").onclick=()=>{$("sportsFrame").src="https://podcasts.apple.com/us/search?term=sports";$("sportsFrameNote").textContent="Loading sports podcasts in the in-page panel. Some publishers may block embedded playback."};
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{$("sportsFrame").src=b.dataset.open;$("sportsFrameNote").textContent="Loading publisher player inside RO’Lyfe DJ Studio."});
