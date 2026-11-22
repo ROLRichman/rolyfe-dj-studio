@@ -88,6 +88,23 @@
 <div class="eq advanced"><label>LOW<input id="lowB" type="range" min="-24" max="12" value="0"></label><label>MID<input id="midB" type="range" min="-24" max="12" value="0"></label><label>HIGH<input id="highB" type="range" min="-24" max="12" value="0"></label><label>FILTER<input id="filterB" type="range" min="-100" max="100" value="0"></label></div>
 <div class="range advanced"><label>GAIN</label><input id="gainB" type="range" min="0" max="1.5" step=".01" value="1"></div>
 </article>
+<section class="booth-tools" id="boothTools">
+<style>
+.booth-tools{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:12px}
+.rec-card,.fx-card{border-radius:16px;padding:14px;background:linear-gradient(145deg,#20151a,#10151c);border:1px solid #6b3544;box-shadow:0 10px 24px #0005}
+.rec-card{border-color:#a63e50;position:relative}.rec-card h3,.fx-card h3{margin:0 0 10px;font-size:13px;letter-spacing:.14em}
+.rec-bubble{display:inline-flex;align-items:center;gap:8px;background:#3b1521;border:1px solid #ff647d;color:#ffe3e8;border-radius:999px;padding:8px 14px;font-weight:900;box-shadow:0 0 20px #ff315522;transition:transform .2s}
+.rec-bubble.recording{animation:recPulse 1.4s infinite;transform:scale(1.03)}.rec-bubble .rec-dot{width:10px;height:10px;border-radius:50%;background:#ff395a;box-shadow:0 0 9px #ff395a}
+@keyframes recPulse{50%{box-shadow:0 0 24px #ff315566}}
+.rec-status{color:#f0b5c0;font-size:12px;margin:8px 0}.rec-time{font-weight:900;font-variant-numeric:tabular-nums}
+.fx-card{background:linear-gradient(145deg,#151b2c,#10151c);border-color:#4c52a1;box-shadow:inset 0 0 24px #5365ff0a}.fx-card h3{color:#aab5ff}
+.fx-tag{display:inline-block;background:#29264e;border:1px solid #7d82ee;color:#e1e4ff;border-radius:9px;padding:5px 10px;margin:2px;font-weight:800;font-size:11px;letter-spacing:.09em}
+.booth-tools button.record-stop{background:#5b1828;border-color:#ff647d;color:#fff;font-weight:900}
+@media(max-width:720px){.booth-tools{grid-template-columns:1fr}}
+</style>
+<div class="rec-card"><h3>● MIX CAPTURE</h3><div id="recBubble" class="rec-bubble"><span class="rec-dot"></span><span id="recBubbleText">REC · READY</span></div><div class="rec-status" id="recStatus">Capture the combined master mix as an audio file.</div><div class="controlrow"><button id="recStart" class="primary">● RECORD MIX</button><button id="recStop" class="record-stop" disabled>■ STOP & SAVE</button><span class="rec-time" id="recTime">00:00</span></div></div>
+<div class="fx-card"><h3>✦ EFFECTS BAY</h3><div><span class="fx-tag">FX</span><span class="fx-tag">FILTER</span><span class="fx-tag">ECHO</span><span class="fx-tag">REVERB</span><span class="fx-tag">LOOP</span></div><p style="font-size:12px;color:#b7c5d5;margin:8px 0">Effects section styling is separated from the mixer so the performance FX controls can live here. These badges are visual labels, not active effects yet.</p></div>
+</section>
 <section class="mixer">
 <div class="mixcol"><strong>CHANNEL A</strong><label class="sub">LEVEL</label><input id="levelA" type="range" min="0" max="1" step=".01" value="1"><div class="mixmeter"><i id="meterA"></i></div></div>
 <div class="mixcol cross"><strong>MASTER MIXER</strong><label><span>DECK A</span><span>CROSSFADER</span><span>DECK B</span></label><input id="crossfader" type="range" min="0" max="1" step=".001" value=".5"><label class="sub">MASTER LEVEL</label><input id="master" type="range" min="0" max="1" step=".01" value=".85"></div>
@@ -149,7 +166,7 @@
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id), app=$("app"), decks={}, C=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
-let ctx=null,master=null,started=false,raf=0;
+let ctx=null,master=null,recordDestination=null,started=false,raf=0;
 function installRotaryControls(){
  document.querySelectorAll(".deck").forEach(deck=>{
   const advanced=[...deck.querySelectorAll(":scope > .advanced")];
@@ -170,7 +187,7 @@ function installRotaryControls(){
 }
 
 installRotaryControls();
-function audio(){if(ctx)return ctx;const AC=window.AudioContext||window.webkitAudioContext;if(!AC){$("audioStatus").textContent="● WEB AUDIO NOT SUPPORTED";return null}ctx=new AC();master=ctx.createGain();master.gain.value=+$("master").value;master.connect(ctx.destination);return ctx}
+function audio(){if(ctx)return ctx;const AC=window.AudioContext||window.webkitAudioContext;if(!AC){$("audioStatus").textContent="● WEB AUDIO NOT SUPPORTED";return null}ctx=new AC();master=ctx.createGain();master.gain.value=+$("master").value;master.connect(ctx.destination);recordDestination=ctx.createMediaStreamDestination();master.connect(recordDestination);return ctx}
 function initDeck(id){const el=new Audio();el.preload="metadata";el.crossOrigin="anonymous";const d={id,el,src:null,buffer:null,source:null,gain:null,eq:[],filter:null,analysis:{bpm:null,key:null},cues:{},loop:false,loopStart:0,loopEnd:0,drag:null,lastAngle:0,wasPlaying:false};decks[id]=d;return d}
 ["A","B"].forEach(initDeck);
 function buildGraph(d){const c=audio();if(!c||d.source)return;try{d.source=c.createMediaElementSource(d.el);let node=d.source;["low","mid","high"].forEach((type,i)=>{const f=c.createBiquadFilter();f.type=["lowshelf","peaking","highshelf"][i];f.frequency.value=[180,1000,6000][i];f.gain.value=0;node.connect(f);node=f;d.eq.push(f)});d.filter=c.createBiquadFilter();d.filter.type="lowpass";d.filter.frequency.value=20000;node.connect(d.filter);d.gain=c.createGain();d.gain.gain.value=1;d.filter.connect(d.gain);d.analyser=c.createAnalyser();d.analyser.fftSize=256;d.gain.connect(d.analyser);d.analyser.connect(master)}catch(e){console.warn(e);$("audioStatus").textContent="● AUDIO GRAPH ERROR"}}
@@ -226,6 +243,12 @@ radioAudio.addEventListener("play",()=>$("radioFloat").classList.add("playing"))
 $("espnListen").onclick=()=>{$("sportsFrame").src="https://a.espnradio.com/CR3/play/_/s/espn.html";$("sportsFrameNote").textContent="Loading ESPN Radio inside RO’Lyfe DJ Studio."};$("tuneinSports").onclick=()=>{$("sportsFrame").src="https://tunein.com/radio/sports/";$("sportsFrameNote").textContent="Loading TuneIn Sports inside the panel. Some publishers may block embedded playback."};$("sportsPodcasts").onclick=()=>{$("sportsFrame").src="https://podcasts.apple.com/us/search?term=sports";$("sportsFrameNote").textContent="Loading sports podcasts in the in-page panel. Some publishers may block embedded playback."};
 document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{$("sportsFrame").src=b.dataset.open;$("sportsFrameNote").textContent="Loading publisher player inside RO’Lyfe DJ Studio."});
 renderSavedStations();findRadio("sports");
+// Mix recorder: captures the master output through a MediaStream destination.
+let mixRecorder=null,mixChunks=[],recordStart=0,recordTimer=null;
+function recClock(){if(!recordStart)return "00:00";const t=Math.floor((Date.now()-recordStart)/1000);return String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0")}
+$("recStart").onclick=async()=>{try{await enable();if(!recordDestination||!window.MediaRecorder)throw new Error("Mix recording is not supported in this browser.");mixChunks=[];const stream=recordDestination.stream;let mime="";for(const candidate of ["audio/webm;codecs=opus","audio/webm","audio/mp4"]){if(MediaRecorder.isTypeSupported(candidate)){mime=candidate;break}}mixRecorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);mixRecorder.ondataavailable=e=>{if(e.data&&e.data.size)mixChunks.push(e.data)};mixRecorder.onstop=()=>{if(!mixChunks.length){$("recStatus").textContent="Recording stopped, but no audio data was received.";return}const blob=new Blob(mixChunks,{type:mixRecorder.mimeType||"audio/webm"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="RO-Lyfe-DJ-Mix-"+new Date().toISOString().replace(/[:.]/g,"-")+(blob.type.includes("mp4")?".mp4":".webm");a.click();setTimeout(()=>URL.revokeObjectURL(url),15000);$("recStatus").textContent="Mix captured and download initiated ("+(Math.round(blob.size/1024)+" KB).");$("recBubbleText").textContent="MIX CAPTURED";$("recBubble").classList.remove("recording");};mixRecorder.start(1000);recordStart=Date.now();$("recBubbleText").textContent="REC · RECORDING YOUR MIX";$("recBubble").classList.add("recording");$("recStatus").textContent="Recording the master output in real time."; $("recStart").disabled=true;$("recStop").disabled=false;recordTimer=setInterval(()=>{$("recTime").textContent=recClock()},500)}catch(e){$("recStatus").textContent="Recording unavailable: "+e.message}};
+$("recStop").onclick=()=>{if(mixRecorder&&mixRecorder.state!=="inactive")mixRecorder.stop();clearInterval(recordTimer);$("recTime").textContent=recClock();recordStart=0;$("recStart").disabled=false;$("recStop").disabled=true};
+
 function tick(){for(const id of ["A","B"]){const d=decks[id];if(d.el.duration&&d.analysis.bpm){let beat=Math.floor(d.el.currentTime*d.analysis.bpm/60)%4+1;$("beat"+id).textContent=beat+"/4"}$("head"+id).style.left=(d.el.duration?Math.max(0,Math.min(100,d.el.currentTime/d.el.duration*100)):0)+"%";if(d.analyser){const samples=new Uint8Array(d.analyser.fftSize);d.analyser.getByteTimeDomainData(samples);let sum=0;for(let i=0;i<samples.length;i++){let v=(samples[i]-128)/128;sum+=v*v}let rms=Math.sqrt(sum/samples.length);$("meter"+id).style.width=Math.min(100,Math.round(rms*220))+"%"}}raf=requestAnimationFrame(tick)}tick();
 window.addEventListener("resize",()=>{drawWave("A",decks.A.buffer);drawWave("B",decks.B.buffer)});
 window.addEventListener("pagehide",()=>{cancelAnimationFrame(raf);["A","B"].forEach(id=>{if(decks[id].src)URL.revokeObjectURL(decks[id].src)})});
