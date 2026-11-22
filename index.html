@@ -261,11 +261,11 @@ body.led-glow .led-target{box-shadow:0 0 7px color-mix(in srgb,var(--led-color,v
 <div class="radio-disc"></div><div class="radio-meta"><strong id="radioNow">RO’Lyfe Radio · Ready</strong><small id="radioSub">Choose a station in Just Listen</small></div>
 <div class="radio-top"><button id="radioListenToggle" title="Open Just Listen">JUST LISTEN</button><button id="radioMute" title="Mute">MUTE</button><button id="radioCollapse" title="Minimize player">−</button></div>
 <audio id="radioAudio" controls preload="none" playsinline></audio><div class="radio-transport" id="radioTransport"><strong>♫ FLOATING LISTEN CONTROLS</strong><div class="transport-buttons"><button id="mediaRew" title="Rewind 15 seconds">↶ 15s</button><button id="mediaPlay" title="Play or pause">▶ / ❚❚</button><button id="mediaFwd" title="Forward 15 seconds">15s ↷</button><button id="mediaNext" title="Next radio station">NEXT ♫</button></div><small id="mediaStatus">Controls for radio stream or supported embedded YouTube.</small></div><div class="radio-body" id="radioBody"><section class="listen-shell" id="justListen">
-<details id="listenDrawer">
-<summary>♫ RO’LYFE JUST LISTEN — MUSIC · RADIO · SPORTS · PODCASTS</summary>
+<details id="listenDrawer" open>
+<summary>♫ JUST LISTEN · MUSIC · RADIO · SPORTS · PODCASTS</summary>
 <div class="listen-content">
 <div class="listen-card">
-<h3>JUST LISTEN · LIVE RADIO</h3>
+<h3 id="radioCategoryLabel">LIVE RADIO · SPORTS</h3>
 <div class="listen-actions" id="listenGenres">
 <button class="active" data-radio-tag="sports">SPORTS</button>
 <button data-radio-tag="hip-hop">HIP-HOP</button>
@@ -275,9 +275,9 @@ body.led-glow .led-target{box-shadow:0 0 7px color-mix(in srgb,var(--led-color,v
 <button data-radio-tag="news">NEWS</button><button data-radio-tag="dj">DJ RADIO · INTERNATIONAL</button>
 </div>
 <div class="listen-actions">
-<button id="radioSearch">Find stations</button><button id="radioSaved">My saved stations</button><button id="radioNext">Next station</button>
+<button id="radioSearch">SEARCH THIS CATEGORY</button><button id="radioSaved">MY SAVED STATIONS</button><button id="radioNext">NEXT STATION</button>
 </div>
-<div class="station-list" id="stationList"><div class="listen-note">Choose a category and tap Find stations. Select Play to start a station in the floating radio player.</div></div>
+<div class="station-list" id="stationList"><div class="listen-note">Choose a category, then PLAY to listen here or LOAD DECK A / LOAD DECK B to route a station into either deck.</div></div>
 <p class="listen-note">Stations are discovered through Radio Browser. Availability and stream rights are controlled by each station. Radio plays in the floating player without navigating away.</p>
 </div>
 <div class="listen-card">
