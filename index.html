@@ -277,8 +277,8 @@ function buildGraph(d){const c=audio();if(!c||d.source)return;try{d.source=c.cre
 // Six default removable crate entries. Audio is not fabricated or bundled.
 const DEFAULT_CRATE=['R..O.L- PROJECT. 1.wav','R.O.L- PRODUCTION 2.wav','R.O.L- PROJECT ONE STAFF.wav','ROL FEST 1...%.wav','ROL-SWFOLDER 1.mp3','TRAFFIC 4.mp3'];
 let crateItems;try{crateItems=JSON.parse(localStorage.getItem('rolyfeDjCrate')||'null')}catch(e){crateItems=null}
-if(!Array.isArray(crateItems))crateItems=DEFAULT_CRATE.map(name=>({id:'default-'+name,name,attached:false}));
-crateItems.forEach((item,i)=>{if(!item.id)item.id='crate-'+i+'-'+item.name;});
+if(!Array.isArray(crateItems))crateItems=DEFAULT_CRATE.map((name,i)=>({id:'default-'+name,name:'RO’Lyfe Demo Mix '+(i+1),attached:false,starter:true}));
+crateItems.forEach((item,i)=>{if(!item.id)item.id='crate-'+i+'-'+item.name;if(i<6&&item.id.startsWith('default-'))item.starter=true;});
 
 function crateDB(){
  return new Promise((resolve,reject)=>{
@@ -326,6 +326,23 @@ async function deleteCrateFile(key){
  }catch(e){console.warn('Could not remove crate audio',e);}
  finally{if(db)db.close();}
 }
+function makeDemoTrack(index){
+ const sr=22050,duration=12,total=sr*duration,buf=new ArrayBuffer(44+total*2),view=new DataView(buf);
+ const put=(off,str)=>{for(let j=0;j<str.length;j++)view.setUint8(off+j,str.charCodeAt(j));};
+ put(0,'RIFF');view.setUint32(4,36+total*2,true);put(8,'WAVE');put(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);put(36,'data');view.setUint32(40,total*2,true);
+ const bpm=[122,92,78,105,128,110][index%6],beat=60/bpm,root=[110,98,82,110,104,100][index%6],scale=[[0,3,5,7],[0,2,3,5,7,10],[0,3,5,7,10],[0,2,4,7,9],[0,3,5,7],[0,2,5,7,9]][index%6];
+ const kickTimes=[];for(let bar=0;bar<duration/(beat*4);bar++){for(let b=0;b<4;b++){if(index===1||index===2||index===3||index===5){if(b%2===0)kickTimes.push(bar*beat*4+b*beat)}else kickTimes.push(bar*beat*4+b*beat)}}
+ for(let i=0;i<total;i++){
+  const t=i/sr,beatPos=t/beat,step=Math.floor(beatPos),note=root*2*Math.pow(2,scale[step%scale.length]/12);
+  let sample=.08*Math.sin(2*Math.PI*note*t)+.035*Math.sin(2*Math.PI*note*2*t);
+  if(index===0||index===4){const ht=(t%(beat/2));sample+=.06*Math.sin(2*Math.PI*900*t)*Math.exp(-ht*45);}
+  for(const kt of kickTimes){const z=t-kt;if(z>=0&&z<.22){const freq=110*Math.exp(-z*18)+42;sample+=.45*Math.sin(2*Math.PI*(110*z- (110-42)*(1-Math.exp(-18*z))/18))*Math.exp(-z*14);}}
+  const snareOffset=(t%(beat*2))-beat;if(snareOffset>=0&&snareOffset<.15&&index!==0&&index!==4)sample+=.07*(Math.random()*2-1)*Math.exp(-snareOffset*30);
+  const fade=Math.min(1,t/.05,(duration-t)/.05);sample*=Math.max(0,fade);
+  view.setInt16(44+i*2,Math.max(-1,Math.min(1,sample))*32767,true);
+ }
+ return new File([buf],'ROLyfe Demo '+(index+1)+'.wav',{type:'audio/wav'});
+}
 async function hydrateCrate(){
  let db=null;
  try{
@@ -337,7 +354,7 @@ async function hydrateCrate(){
     file=await readCrateFile(db,String(i));
     if(file)await writeCrateFile(db,item.id,file);
    }
-   if(file){item.file=file;item.attached=true;}
+   if(file){item.file=file;item.attached=true;}else if(item.starter){item.file=makeDemoTrack(i);item.attached=true;try{await writeCrateFile(db,item.id,item.file);}catch(e){console.warn('Demo track storage failed',e);}}
   }
  }catch(e){console.warn('Crate restore unavailable',e);}
  finally{if(db)db.close();renderCrate();}
@@ -368,7 +385,7 @@ function loadCrateFile(i,id){
 }
 function renderCrate(){
  const host=$('crateBody');if(!host)return;
- host.innerHTML='<div class="listen-note">The six starter rows are crate slots, not preloaded audio files. Tap Load A or Load B to choose the matching track from this tablet. Once saved, each track stays in this browser for future sessions.</div><button id="crateAdd">＋ ADD TRACK TO CRATE</button>';
+ host.innerHTML='<div class="listen-note">Six original demo grooves are built into the crate for testing deck playback, loading, waveform, controls and mixing. Replace them with your own audio anytime.</div><button id="crateAdd">＋ ADD TRACK TO CRATE</button>';
  const add=$('crateAdd');
  add.onclick=()=>chooseNewCrateAudio();
  crateItems.forEach((item,i)=>{
